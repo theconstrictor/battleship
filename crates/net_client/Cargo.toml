@@ -1,0 +1,11 @@
+[package]
+name = "net_client"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+game_core.workspace = true
+renet.workspace = true
+renet_netcode.workspace = true
+bincode.workspace = true
+rand.workspace = true

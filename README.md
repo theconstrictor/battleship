@@ -1,0 +1,152 @@
+# Battleship
+
+A networked PvP battleship game, built as a learning exercise around a clean
+client-server split:
+
+- **`server`** — a plain Rust binary (no Bevy) that owns the entire game state
+- **`game_core`** — the rules and wire protocol, shared by server and clients
+- **`client`** — a Bevy game (planned, see [ROADMAP.md](ROADMAP.md))
+
+## The workspace
+
+```
+Cargo.toml            → workspace manifest, shared deps + versions
+crates/
+  game_core/          → pure rules + wire protocol (no networking, no Bevy)
+  server/             → plain Rust binary (no Bevy at all)
+  net_client/         → client networking layer; reference implementation
+                        the Bevy client will reuse (plus integration tests
+                        under server/tests/)
+```
+
+The root manifest declares the workspace members and centralizes dependency
+versions (`serde`, `rand`, `renet`, `bincode`). Both crates use `edition = 2024`.
+
+## `game_core` — the rules, in a vacuum
+
+**`board.rs`** knows nothing about sockets or players. Its whole world:
+
+- `SHIP_SIZES = [5, 4, 3, 3, 2]` and `SHIP_NAMES` — Carrier, Battleship, Cruiser,
+  Submarine, Destroyer
+- `ShipSpec { ship, x, y, horizontal }` — a serializable description of one
+  ship's placement. `cells()` expands it into the coordinates it occupies,
+  `in_bounds()` checks the grid
+- `Board` — a 10×10 grid of `Option<ship_index>`. `place()` returns `Result`
+  with three failure modes: `UnknownShip`, `OutOfBounds`, `Overlap`.
+  `from_specs()` validates a whole fleet at once
+- `GameBoard` — a `Board` + a shot grid. `fire(x, y)` returns `None` if the
+  cell was already shot, otherwise `Miss` or `Hit { sunk }`
+- Extras: `Board::random()` for the future client's "randomize" button, and
+  `ships()` which reconstructs `ShipSpec`s from a grid (used by tests to
+  round-trip)
+
+**`protocol.rs`** is the contract both sides agree on, with the directionality
+baked into the types:
+
+```rust
+Intent:  Join{name}, ShipsPlaced{ships}, Shot{x,y}, Rematch
+         // "requests and claims; the server may reject any of them"
+
+Fact:    Paired{your_index, opponent_name}, GameStart,
+         ShotResult{x,y,hit,sunk,game_over,shooter},
+         Turn{your_turn}, GameOver{winner}, Rematch, Error{message}
+         // "statements about authoritative state; clients cannot reject them"
+```
+
+Clients speak `Intent`s; the server answers with `Fact`s. The rename also
+exposes a subtlety: `Intent::Rematch` (a request) and `Fact::Rematch` (an
+authoritative reset) are different things despite the same word.
+
+## `server` — the authority
+
+**`game.rs` — `Game` is a pure function.** The server's brain has no idea
+sockets exist:
+
+```rust
+struct Game {
+    players: Vec<Player>,  // names + boards, index = player number
+    ids: Vec<ClientId>,    // renet connection ids, same order
+    phase: Phase,          // Lobby → Placement → Battle → GameOver
+    turn: usize,           // whose turn (player index)
+}
+```
+
+Three entry points, each returning `Vec<OutMsg>` where
+`OutMsg = { target: All | One(id), fact: Fact }`:
+
+- `on_connect(id)` — rejects the third connection
+- `on_disconnect(id)` — tears down mid-game state, tells the survivor
+- `apply(from, intent)` — the big match on `Intent`
+
+`apply` encodes every lie a client could tell, as early returns of
+`Fact::Error`:
+
+- `ShipsPlaced` outside placement phase
+- wrong ship count, duplicate ship types, overlapping ships
+- `Shot` outside battle, out of turn, out of bounds, already-shot cell
+- `Rematch` when no game finished
+
+When the second `ShipsPlaced` lands, the phase flips to `Battle` and it emits
+`GameStart` + two `Turn` facts. On a legal shot it fires at the opponent's
+board, broadcasts the `ShotResult` (with `shooter` so each client knows whose
+shot it was), then either ends the game or flips `turn` and re-sends `Turn` to
+each player.
+
+**`main.rs` — the thin shell.** A ~70-line loop that moves bytes:
+
+```rust
+loop {
+    transport.update(delta, &mut server);  // UDP packets in, handshake events
+    server.update(delta);                  // reliable channel bookkeeping
+
+    // drain connect/disconnect events → game.on_connect / on_disconnect
+    // drain bytes per client → bincode::deserialize::<Intent> → game.apply → dispatch
+
+    transport.send_packets(&mut server);   // bytes out
+    sleep(2ms);
+}
+```
+
+`dispatch()` serializes each `Fact` and sends it to `All` or `One`. The server
+prints its log (`client 123 connected`, rejections) to stdout so you can watch
+the authority think.
+
+## Why it's structured this way
+
+1. **Authority is testable without sockets** — `game.rs` tests construct a
+   `Game`, feed it `Intent`s as if they came off the wire, and assert on the
+   outgoing `Fact`s. One test plays a complete game shot-by-shot to
+   `GameOver`; others verify each rejection path.
+2. **Player index vs connection id** — game logic never uses renet's
+   `ClientId` for identity; it uses join order (`0`/`1`). That's what
+   `shooter` and `winner` carry over the wire, so a client only needs "am I
+   0 or 1" — learned from `Fact::Paired{your_index}`.
+3. **The wire format can't drift** — both sides use the same `Intent`/`Fact`
+   types from `game_core`.
+4. **Battleship trivia** — `sunk` is computed by `GameBoard::fire` locally
+   (the shot that hits the ship's last cell), and `game_over` additionally
+   checks `all_sunk` — sinking one ship doesn't end the game.
+
+## Tests — 22 total, all green
+
+- **8 in `game_core`** — placement/lookup, out-of-bounds, overlap, unknown
+  ship, hit/miss/repeat, sinking on last cell, `ships()` round-trip, 100
+  random boards always valid
+- **10 in `server`** — third-client rejection, pairing, game start,
+  out-of-turn/out-of-bounds/already-shot rejection, full game to `GameOver`,
+  invalid fleets, rematch reset, mid-game disconnect recovery
+- **4 integration tests** (`crates/server/tests/`) — spawn the real server
+  binary and drive `net_client` actors over real UDP sockets: full game +
+  rematch, lying intents earning `Fact::Error`s, survivor sees a mid-battle
+  disconnect, third client rejected
+
+## Run it
+
+```bash
+cargo test                    # 22 tests
+cargo run -p server           # "battleship server listening on 0.0.0.0:5000"
+cargo run -p server -- --port 6000
+```
+
+One deliberate simplification to flag: **player 0 always goes first**,
+including after rematches. Real battleship alternates the starting player.

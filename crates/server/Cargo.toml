@@ -1,0 +1,15 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+game_core.workspace = true
+renet.workspace = true
+renet_netcode.workspace = true
+bincode.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+net_client.workspace = true
+rand.workspace = true
