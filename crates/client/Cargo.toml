@@ -1,0 +1,11 @@
+[package]
+name = "client"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+game_core.workspace = true
+bevy.workspace = true
+bevy_renet.workspace = true
+bincode.workspace = true
+rand.workspace = true

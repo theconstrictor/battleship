@@ -1,3 +1,9 @@
+//! A plain-Rust battleship client transport.
+//!
+//! This is not the Bevy client's networking layer (that uses `bevy_renet`).
+//! It exists to drive the server's integration tests over real sockets, and
+//! can be reused by future headless clients such as the AI opponent.
+
 use std::{
     collections::VecDeque,
     net::{SocketAddr, UdpSocket},

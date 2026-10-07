@@ -5,7 +5,7 @@ client-server split:
 
 - **`server`** — a plain Rust binary (no Bevy) that owns the entire game state
 - **`game_core`** — the rules and wire protocol, shared by server and clients
-- **`client`** — a Bevy game (planned, see [ROADMAP.md](ROADMAP.md))
+- **`client`** — a Bevy client that renders facts and sends intents
 
 ## The workspace
 
@@ -14,13 +14,15 @@ Cargo.toml            → workspace manifest, shared deps + versions
 crates/
   game_core/          → pure rules + wire protocol (no networking, no Bevy)
   server/             → plain Rust binary (no Bevy at all)
-  net_client/         → client networking layer; reference implementation
-                        the Bevy client will reuse (plus integration tests
-                        under server/tests/)
+  net_client/         → plain-Rust client transport: drives the integration
+                        tests under server/tests/ (and future headless bots);
+                        the Bevy client uses bevy_renet instead
+  client/             → the Bevy game (bevy_renet, not net_client)
 ```
 
 The root manifest declares the workspace members and centralizes dependency
-versions (`serde`, `rand`, `renet`, `bincode`). Both crates use `edition = 2024`.
+versions (`serde`, `rand`, `renet`, `bevy`, `bincode`). All crates use
+`edition = 2024`.
 
 ## `game_core` — the rules, in a vacuum
 
@@ -111,6 +113,33 @@ loop {
 prints its log (`client 123 connected`, rejections) to stdout so you can watch
 the authority think.
 
+## `client` — facts in, intents out
+
+The Bevy client renders a projection of facts and sends intents; it never
+moves its own Screen. A single `Screen` enum (`Menu`, `Waiting`, `Placement`,
+`Battle`, `GameOver`) is the bevy `States`; transitions happen only when
+facts or connection events arrive.
+
+- **`projection.rs`** is the pure client brain: a `Projection` resource that
+  `apply_fact(&Fact) -> ScreenAction` mutates, plus the placement
+  `FleetEditor` (palette, carry, rotate, the overlap/bounds convenience
+  check). Both are unit-tested without sockets.
+- **`net.rs`** holds `RenetClient` + `NetcodeClientTransport` resources
+  (bevy_renet), drains wire bytes into `apply_facts`, watches
+  connect/disconnect, and lands every disconnection back in Menu with a
+  reason and a Retry button.
+- **Screens** build their `bevy_ui` nodes in `OnEnter`/`OnExit`. Placement
+  has the palette, R to rotate, a green/red hover ghost, Randomize
+  (`Board::random`), and Ready gated on a preview-valid fleet. Battle has
+  200 cell entities mutated by one render system: `ShotResult` is keyed by
+  `shooter` against my seat, the enemy board dims on the opponent's turn but
+  stays clickable — shots are never pre-checked locally. GameOver offers
+  Rematch to both seats; the loser of the race gets
+  `Error: No finished game to rematch`, which hides the button.
+
+All rules stay server-side; the Authority re-validates every intent,
+including fleets that passed the convenience check.
+
 ## Why it's structured this way
 
 1. **Authority is testable without sockets** — `game.rs` tests construct a
@@ -127,25 +156,30 @@ the authority think.
    (the shot that hits the ship's last cell), and `game_over` additionally
    checks `all_sunk` — sinking one ship doesn't end the game.
 
-## Tests — 22 total, all green
+## Tests — 38 total, all green
 
 - **8 in `game_core`** — placement/lookup, out-of-bounds, overlap, unknown
   ship, hit/miss/repeat, sinking on last cell, `ships()` round-trip, 100
   random boards always valid
-- **10 in `server`** — third-client rejection, pairing, game start,
-  out-of-turn/out-of-bounds/already-shot rejection, full game to `GameOver`,
-  invalid fleets, rematch reset, mid-game disconnect recovery
+- **12 in `server`** — third-client rejection, pairing, lone-join waits,
+  game start, out-of-turn/out-of-bounds/already-shot rejection, full game to
+  `GameOver`, invalid fleets, rematch reset, mid-game disconnect recovery
 - **4 integration tests** (`crates/server/tests/`) — spawn the real server
   binary and drive `net_client` actors over real UDP sockets: full game +
   rematch, lying intents earning `Fact::Error`s, survivor sees a mid-battle
   disconnect, third client rejected
+- **14 in `client`** — the pure projection brain: fact routing by seat,
+  screen actions per fact, rematch reset, rematch-race error handling, and
+  the fleet editor's pick-up/place/rotate/overlap/ready/randomize logic
 
 ## Run it
 
 ```bash
-cargo test                    # 22 tests
+cargo test                    # 38 tests
 cargo run -p server           # "battleship server listening on 0.0.0.0:5000"
 cargo run -p server -- --port 6000
+cargo run -p client           # defaults: name "player", server 127.0.0.1:5000
+cargo run -p client -- --name alice --server 127.0.0.1:6000
 ```
 
 One deliberate simplification to flag: **player 0 always goes first**,

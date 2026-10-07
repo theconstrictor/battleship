@@ -68,14 +68,14 @@ impl Game {
             for player in &mut self.players {
                 player.board = None;
             }
-            for remaining in &self.ids {
-                out.push(OutMsg {
-                    target: Target::One(*remaining),
-                    fact: Fact::Error {
-                        message: "Opponent disconnected".to_string(),
-                    },
-                });
-            }
+        }
+        for remaining in &self.ids {
+            out.push(OutMsg {
+                target: Target::One(*remaining),
+                fact: Fact::Error {
+                    message: "Opponent disconnected".to_string(),
+                },
+            });
         }
         out
     }
@@ -88,7 +88,10 @@ impl Game {
         match intent {
             Intent::Join { name } => {
                 self.players[index].name = name;
-                if self.phase == Phase::Lobby && self.players.iter().all(|p| !p.name.is_empty()) {
+                if self.phase == Phase::Lobby
+                    && self.players.len() == 2
+                    && self.players.iter().all(|p| !p.name.is_empty())
+                {
                     self.phase = Phase::Placement;
                     out.extend(self.pairing_msgs());
                 }
@@ -406,5 +409,29 @@ mod tests {
         assert!(game.on_connect(B));
         game.apply(B, Intent::Join { name: "bob".into() });
         assert_eq!(game.phase, Phase::Placement);
+    }
+
+    #[test]
+    fn lone_join_waits_for_a_pair() {
+        let mut game = Game::default();
+        game.on_connect(A);
+        assert!(game.apply(A, Intent::Join { name: "alice".into() }).is_empty());
+        assert_eq!(game.phase, Phase::Lobby);
+        game.on_connect(B);
+        let msgs = game.apply(B, Intent::Join { name: "bob".into() });
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(game.phase, Phase::Placement);
+    }
+
+    #[test]
+    fn disconnect_in_lobby_still_notifies() {
+        let mut game = Game::default();
+        game.on_connect(A);
+        game.on_connect(B);
+        game.apply(A, Intent::Join { name: "alice".into() });
+        let msgs = game.on_disconnect(B);
+        assert_eq!(msgs.len(), 1);
+        assert!(matches!(&msgs[0].fact, Fact::Error { .. }));
+        assert_eq!(game.phase, Phase::Lobby);
     }
 }

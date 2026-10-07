@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/game_core", "crates/server", "crates/net_client"]
+members = ["crates/game_core", "crates/server", "crates/net_client", "crates/client"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,6 +9,8 @@ edition = "2024"
 [workspace.dependencies]
 game_core = { path = "crates/game_core" }
 net_client = { path = "crates/net_client" }
+bevy = "0.19"
+bevy_renet = "5.0"
 renet = "2.0"
 renet_netcode = "2.0"
 bincode = "1.3"
