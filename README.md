@@ -110,8 +110,9 @@ loop {
 ```
 
 `dispatch()` serializes each `Fact` and sends it to `All` or `One`. The server
-prints its log (`client 123 connected`, rejections) to stdout so you can watch
-the authority think.
+writes a JSON log (one line per event: connects, intents received, facts
+sent, rejections) to stdout — redirect it for later analysis, e.g.
+`cargo run -p server > server.log`, and use `RUST_LOG=debug` for turn facts.
 
 ## `client` — facts in, intents out
 
