@@ -17,6 +17,26 @@ jobs:
       - name: Run tests
         run: cargo test --workspace
 
+  release:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    needs: test
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run semantic-release
+        run: npx --yes semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
   build:
     strategy:
       fail-fast: false
@@ -35,6 +55,8 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact: windows-x86_64
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -50,12 +72,21 @@ jobs:
           sudo apt-get install -y pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Build
         run: cargo build --release -p server -p client --target ${{ matrix.target }}
-      - name: Upload server
+      - name: Attach binaries to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/${{ matrix.target }}/release/server${{ runner.os == 'Windows' && '.exe' || '' }}
+            target/${{ matrix.target }}/release/client${{ runner.os == 'Windows' && '.exe' || '' }}
+      - name: Upload server artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.artifact }}
           path: target/${{ matrix.target }}/release/server${{ runner.os == 'Windows' && '.exe' || '' }}
-      - name: Upload client
+      - name: Upload client artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
           name: client-${{ matrix.artifact }}

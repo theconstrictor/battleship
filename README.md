@@ -186,12 +186,22 @@ cargo run -p client -- --server myhost.example.com:6000   # DNS name works too
 
 ## Run prebuilt binaries
 
-Every CI run builds release binaries and uploads them as workflow
-artifacts (Actions → pick a run → Artifacts): `server-<arch>` and
-`client-<arch>` for linux x86_64/aarch64, macos aarch64, and windows
-x86_64. Download the pair matching your machine (on Windows the
-binaries are `server.exe` / `client.exe`) and run them directly, no
-Rust toolchain needed:
+**Releases**: [semantic-release](https://semantic-release.gitbook.io) runs on
+`master` and derives versions from conventional commit messages (`feat:` →
+minor, `fix:` → patch, `feat!`/`BREAKING CHANGE` → major). On release it
+bumps the workspace version in `Cargo.toml` + `Cargo.lock`, tags the repo,
+and creates a GitHub release; the tag-triggered CI build then attaches
+`server` and `client` binaries for all four architectures to that release.
+
+The release job pushes the tag using a personal access token stored as the
+repo secret `RELEASE_TOKEN` (a classic PAT with `repo` scope) so the tag
+push re-triggers CI and the binaries land on the release.
+
+Every other CI run also uploads binaries as workflow artifacts (Actions →
+pick a run → Artifacts): `server-<arch>` and `client-<arch>` for linux
+x86_64/aarch64, macos aarch64, and windows x86_64. Download the pair
+matching your machine (on Windows the binaries are `server.exe` /
+`client.exe`) and run them directly, no Rust toolchain needed:
 
 ```bash
 ./server                 # listens on 0.0.0.0:5000, JSON log to stdout
