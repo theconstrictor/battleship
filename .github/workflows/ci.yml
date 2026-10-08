@@ -16,3 +16,47 @@ jobs:
           sudo apt-get install -y pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
       - name: Run tests
         run: cargo test --workspace
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: linux-aarch64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - name: Build
+        run: cargo build --release -p server -p client --target ${{ matrix.target }}
+      - name: Upload server
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/server${{ runner.os == 'Windows' && '.exe' || '' }}
+      - name: Upload client
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/client${{ runner.os == 'Windows' && '.exe' || '' }}

@@ -8,7 +8,7 @@ mod screen;
 mod ui;
 mod waiting;
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use bevy::prelude::*;
 use bevy_renet::{
@@ -90,11 +90,8 @@ fn args() -> (String, SocketAddr) {    let mut name = "player".to_string();
         match arg.as_str() {
             "--name" => name = args.next().expect("--name requires a value"),
             "--server" => {
-                server = args
-                    .next()
-                    .expect("--server requires a value")
-                    .parse()
-                    .expect("server must be host:port");
+                let value = args.next().expect("--server requires a value");
+                server = resolve_server(&value);
             }
             other => {
                 eprintln!("unknown argument: {other}");
@@ -103,4 +100,17 @@ fn args() -> (String, SocketAddr) {    let mut name = "player".to_string();
         }
     }
     (name, server)
+}
+
+/// Resolve `host:port` to a socket address; the host may be a domain name,
+/// a hostname, or an IP literal.
+fn resolve_server(host_port: &str) -> SocketAddr {
+    let mut addrs = host_port.to_socket_addrs().unwrap_or_else(|error| {
+        eprintln!("failed to resolve server address {host_port}: {error}");
+        std::process::exit(1);
+    });
+    addrs.next().unwrap_or_else(|| {
+        eprintln!("server address {host_port} resolved to no addresses");
+        std::process::exit(1);
+    })
 }

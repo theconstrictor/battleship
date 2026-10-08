@@ -181,6 +181,26 @@ cargo run -p server           # "battleship server listening on 0.0.0.0:5000"
 cargo run -p server -- --port 6000
 cargo run -p client           # defaults: name "player", server 127.0.0.1:5000
 cargo run -p client -- --name alice --server 127.0.0.1:6000
+cargo run -p client -- --server myhost.example.com:6000   # DNS name works too
+```
+
+## Run prebuilt binaries
+
+Every CI run builds release binaries and uploads them as workflow
+artifacts (Actions → pick a run → Artifacts): `server-<arch>` and
+`client-<arch>` for linux x86_64/aarch64, macos aarch64, and windows
+x86_64. Download the pair matching your machine (on Windows the
+binaries are `server.exe` / `client.exe`) and run them directly, no
+Rust toolchain needed:
+
+```bash
+./server                 # listens on 0.0.0.0:5000, JSON log to stdout
+./server --port 6000
+./server > server.log    # redirect the JSON log for later analysis
+
+./client                                 # defaults: name "player", server 127.0.0.1:5000
+./client --name alice --server 127.0.0.1:6000
+./client --server myhost.example.com:6000   # DNS name works too
 ```
 
 One deliberate simplification to flag: **player 0 always goes first**,
