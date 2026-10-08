@@ -32,8 +32,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install semantic-release
+        run: npm ci
       - name: Run semantic-release
-        run: npx --yes semantic-release
+        run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
