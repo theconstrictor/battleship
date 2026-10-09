@@ -190,12 +190,13 @@ cargo run -p client -- --server myhost.example.com:6000   # DNS name works too
 `master` and derives versions from conventional commit messages (`feat:` →
 minor, `fix:` → patch, `feat!`/`BREAKING CHANGE` → major). On release it
 bumps the workspace version in `Cargo.toml` + `Cargo.lock`, tags the repo,
-and creates a GitHub release; the tag-triggered CI build then attaches
-`server` and `client` binaries for all four architectures to that release.
+creates a GitHub release, and the `attach` job in the same workflow run
+builds and uploads `server` and `client` binaries for all four architectures
+as release assets.
 
-The release job pushes the tag using a personal access token stored as the
-repo secret `RELEASE_TOKEN` (a classic PAT with `repo` scope) so the tag
-push re-triggers CI and the binaries land on the release.
+The release job pushes the version bump and tag using a personal access
+token stored as the repo secret `RELEASE_TOKEN` (a classic PAT with `repo`
+scope); the `attach` job reuses it to upload the binaries to the release.
 
 Every other CI run also uploads binaries as workflow artifacts (Actions →
 pick a run → Artifacts): `server-<arch>` and `client-<arch>` for linux
