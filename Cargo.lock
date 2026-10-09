@@ -2056,7 +2056,7 @@ dependencies = [
 
 [[package]]
 name = "client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bevy",
  "bevy_renet",
@@ -2741,7 +2741,7 @@ dependencies = [
 
 [[package]]
 name = "game_core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "rand 0.9.5",
  "serde",
@@ -3644,7 +3644,7 @@ dependencies = [
 
 [[package]]
 name = "net_client"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bincode",
  "game_core",
@@ -4872,7 +4872,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bincode",
  "game_core",
